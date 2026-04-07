@@ -43,31 +43,65 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
   const { addDocument, updateDocument, getDocument } = useDocumentsStore();
   const { addToast } = useToastStore();
 
+  const getSavedSetting = (key, defaultValue) => {
+    if (!currentUser) return defaultValue;
+    try {
+      const raw = localStorage.getItem(`cardcomposer_settings_${currentUser.id}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed[key] !== undefined) return parsed[key];
+      }
+    } catch(e){}
+    return defaultValue;
+  };
+
   // State
   const [selectedCardId, setSelectedCardId] = useState(preselectedCardId || '');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('tpl-standard-vertical');
-  const [useCustomLayout, setUseCustomLayout] = useState(false);
-  const [customLayout, setCustomLayout] = useState([
+  const [selectedTemplateId, setSelectedTemplateId] = useState(() => getSavedSetting('selectedTemplateId', 'tpl-standard-vertical'));
+  const [useCustomLayout, setUseCustomLayout] = useState(() => getSavedSetting('useCustomLayout', false));
+  const [customLayout, setCustomLayout] = useState(() => getSavedSetting('customLayout', [
     { type: 'front', cx: 50, cy: 25, maxW: 90, maxH: 45 },
     { type: 'back', cx: 50, cy: 75, maxW: 90, maxH: 45 },
-  ]);
+  ]));
   const [purpose, setPurpose] = useState('');
   const [overlays, setOverlays] = useState([]);
-  const [exportFilter, setExportFilter] = useState('original');
-  const [watermarkText, setWatermarkText] = useState('COPY');
+  const [exportFilter, setExportFilter] = useState(() => getSavedSetting('exportFilter', 'original'));
+  const [watermarkText, setWatermarkText] = useState(() => getSavedSetting('watermarkText', 'COPY'));
   const [exporting, setExporting] = useState(false);
   const [canvasReady, setCanvasReady] = useState(false);
 
   // Text overlay controls
   const [newText, setNewText] = useState('');
-  const [textFontSize, setTextFontSize] = useState(24);
-  const [textOpacity, setTextOpacity] = useState(70);
-  const [textRotation, setTextRotation] = useState(-30);
-  const [textColor, setTextColor] = useState('#ff5a6e');
+  const [textFontSize, setTextFontSize] = useState(() => getSavedSetting('textFontSize', 24));
+  const [textOpacity, setTextOpacity] = useState(() => getSavedSetting('textOpacity', 70));
+  const [textRotation, setTextRotation] = useState(() => getSavedSetting('textRotation', -30));
+  const [textColor, setTextColor] = useState(() => getSavedSetting('textColor', '#000000')); // Default changed to black
 
   // QR controls
   const [qrText, setQrText] = useState('');
-  const [qrSize, setQrSize] = useState(80);
+  const [qrSize, setQrSize] = useState(() => getSavedSetting('qrSize', 80));
+
+  // Save settings whenever they change
+  useEffect(() => {
+    if (!currentUser) return;
+    const settings = {
+      selectedTemplateId,
+      useCustomLayout,
+      customLayout,
+      exportFilter,
+      watermarkText,
+      textFontSize,
+      textOpacity,
+      textRotation,
+      textColor,
+      qrSize
+    };
+    localStorage.setItem(`cardcomposer_settings_${currentUser.id}`, JSON.stringify(settings));
+  }, [
+    currentUser, selectedTemplateId, useCustomLayout, customLayout, 
+    exportFilter, watermarkText, textFontSize, textOpacity, 
+    textRotation, textColor, qrSize
+  ]);
 
   // Signature
   const [signatureFile, setSignatureFile] = useState(null);
