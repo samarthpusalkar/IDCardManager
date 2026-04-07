@@ -46,6 +46,11 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
   // State
   const [selectedCardId, setSelectedCardId] = useState(preselectedCardId || '');
   const [selectedTemplateId, setSelectedTemplateId] = useState('tpl-standard-vertical');
+  const [useCustomLayout, setUseCustomLayout] = useState(false);
+  const [customLayout, setCustomLayout] = useState([
+    { type: 'front', cx: 50, cy: 25, maxW: 90, maxH: 45 },
+    { type: 'back', cx: 50, cy: 75, maxW: 90, maxH: 45 },
+  ]);
   const [purpose, setPurpose] = useState('');
   const [overlays, setOverlays] = useState([]);
   const [exportFilter, setExportFilter] = useState('original');
@@ -104,7 +109,7 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
   useEffect(() => {
     if (!canvasReady || !fabricRef.current) return;
     renderCardOnCanvas();
-  }, [selectedCardId, selectedTemplateId, canvasReady]);
+  }, [selectedCardId, selectedTemplateId, canvasReady, useCustomLayout, customLayout]);
 
   const renderCardOnCanvas = useCallback(async () => {
     const canvas = fabricRef.current;
@@ -120,39 +125,38 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
     const card = await getCard(selectedCardId);
     if (!card) return;
 
-    const template = templates.find((t) => t.id === selectedTemplateId);
-    if (!template) return;
+    let slots = [];
+    if (useCustomLayout) {
+      slots = customLayout;
+    } else {
+      const template = templates.find((t) => t.id === selectedTemplateId);
+      if (!template) return;
+      slots = template.layout.slots;
+    }
 
-    const { layout } = template;
-
-    for (const slot of layout.slots) {
+    for (const slot of slots) {
       const blob = slot.type === 'front' ? card.frontImage : card.backImage;
       const url = URL.createObjectURL(blob);
 
       try {
         const img = await FabricImage.fromURL(url);
-        const slotX = mmToPx(slot.x, PREVIEW_DPI);
-        const slotY = mmToPx(slot.y, PREVIEW_DPI);
-        const slotMaxW = mmToPx(slot.maxWidth, PREVIEW_DPI);
-        const slotMaxH = mmToPx(slot.maxHeight, PREVIEW_DPI);
+        const cxPx = (slot.cx / 100) * previewWidth;
+        const cyPx = (slot.cy / 100) * previewHeight;
+        const maxWPx = (slot.maxW / 100) * previewWidth;
+        const maxHPx = (slot.maxH / 100) * previewHeight;
 
-        // Scale to fit within slot
+        // Scale to fit within slot boundaries
         const imgW = img.width;
         const imgH = img.height;
-        const scaleX = slotMaxW / imgW;
-        const scaleY = slotMaxH / imgH;
+        const scaleX = maxWPx / imgW;
+        const scaleY = maxHPx / imgH;
         const scale = Math.min(scaleX, scaleY);
 
-        const scaledW = imgW * scale;
-        const scaledH = imgH * scale;
-
-        // Center within slot
-        const offsetX = slotX + (slotMaxW - scaledW) / 2;
-        const offsetY = slotY + (slotMaxH - scaledH) / 2;
-
         img.set({
-          left: offsetX,
-          top: offsetY,
+          left: cxPx,
+          top: cyPx,
+          originX: 'center',
+          originY: 'center',
           scaleX: scale,
           scaleY: scale,
           selectable: false,
@@ -505,8 +509,8 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
                   <input
                     type="radio"
                     name="template"
-                    checked={selectedTemplateId === t.id}
-                    onChange={() => setSelectedTemplateId(t.id)}
+                    checked={!useCustomLayout && selectedTemplateId === t.id}
+                    onChange={() => { setSelectedTemplateId(t.id); setUseCustomLayout(false); }}
                   />
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{t.name}</div>
@@ -514,6 +518,61 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
                   </div>
                 </label>
               ))}
+
+              <div className="divider" />
+              
+              <label className="checkbox-group">
+                <input
+                  type="checkbox"
+                  checked={useCustomLayout}
+                  onChange={(e) => setUseCustomLayout(e.target.checked)}
+                />
+                <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>Advanced Configuration (Manual Layout)</span>
+              </label>
+
+              {useCustomLayout && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
+                  {customLayout.map((slot, index) => (
+                    <div key={index} style={{ padding: 'var(--space-3)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
+                      <h5 style={{ marginBottom: 'var(--space-2)', fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}>
+                        {slot.type} Image Layout
+                      </h5>
+                      <div className="range-group">
+                        <label>Center X (Horizontal) <span>{slot.cx}%</span></label>
+                        <input type="range" min="5" max="95" value={slot.cx} onChange={(e) => {
+                          const newLayout = [...customLayout];
+                          newLayout[index] = { ...slot, cx: +e.target.value };
+                          setCustomLayout(newLayout);
+                        }} />
+                      </div>
+                      <div className="range-group mt-2">
+                        <label>Center Y (Vertical) <span>{slot.cy}%</span></label>
+                        <input type="range" min="5" max="95" value={slot.cy} onChange={(e) => {
+                          const newLayout = [...customLayout];
+                          newLayout[index] = { ...slot, cy: +e.target.value };
+                          setCustomLayout(newLayout);
+                        }} />
+                      </div>
+                      <div className="range-group mt-2">
+                        <label>Max Width <span>{slot.maxW}%</span></label>
+                        <input type="range" min="10" max="100" value={slot.maxW} onChange={(e) => {
+                          const newLayout = [...customLayout];
+                          newLayout[index] = { ...slot, maxW: +e.target.value };
+                          setCustomLayout(newLayout);
+                        }} />
+                      </div>
+                      <div className="range-group mt-2">
+                        <label>Max Height <span>{slot.maxH}%</span></label>
+                        <input type="range" min="10" max="100" value={slot.maxH} onChange={(e) => {
+                          const newLayout = [...customLayout];
+                          newLayout[index] = { ...slot, maxH: +e.target.value };
+                          setCustomLayout(newLayout);
+                        }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

@@ -9,60 +9,70 @@ db.version(1).stores({
   documents: 'id, userId, cardId, templateId, createdAt',
 });
 
-// Built-in templates
+// Built-in templates using percentage of A4 page (0-100)
 const BUILTIN_TEMPLATES = [
   {
     id: 'tpl-standard-vertical',
     name: 'Standard Vertical',
-    description: 'Front on top, back on bottom — fits most use cases',
+    description: 'Front on top (25%), back on bottom (75%)',
     isBuiltin: true,
     layout: {
       pageSize: 'A4',
       orientation: 'portrait',
-      margins: { top: 15, right: 15, bottom: 15, left: 15 },
       slots: [
-        { type: 'front', x: 15, y: 15, maxWidth: 180, maxHeight: 120 },
-        { type: 'back', x: 15, y: 145, maxWidth: 180, maxHeight: 120 },
+        { type: 'front', cx: 50, cy: 25, maxW: 90, maxH: 45 },
+        { type: 'back', cx: 50, cy: 75, maxW: 90, maxH: 45 },
       ],
     },
   },
   {
     id: 'tpl-side-by-side',
     name: 'Side by Side',
-    description: 'Front left, back right — landscape-style layout',
+    description: 'Front left (25%), back right (75%)',
     isBuiltin: true,
     layout: {
       pageSize: 'A4',
       orientation: 'portrait',
-      margins: { top: 15, right: 15, bottom: 15, left: 15 },
       slots: [
-        { type: 'front', x: 15, y: 15, maxWidth: 87, maxHeight: 267 },
-        { type: 'back', x: 108, y: 15, maxWidth: 87, maxHeight: 267 },
+        { type: 'front', cx: 25, cy: 50, maxW: 45, maxH: 90 },
+        { type: 'back', cx: 75, cy: 50, maxW: 45, maxH: 90 },
       ],
     },
   },
   {
     id: 'tpl-compact',
-    name: 'Compact (Small)',
-    description: 'Smaller card prints centered on A4',
+    name: 'Compact (Centered)',
+    description: 'Smaller card prints clustered in center',
     isBuiltin: true,
     layout: {
       pageSize: 'A4',
       orientation: 'portrait',
-      margins: { top: 20, right: 30, bottom: 20, left: 30 },
       slots: [
-        { type: 'front', x: 30, y: 20, maxWidth: 150, maxHeight: 100 },
-        { type: 'back', x: 30, y: 130, maxWidth: 150, maxHeight: 100 },
+        { type: 'front', cx: 50, cy: 35, maxW: 60, maxH: 25 },
+        { type: 'back', cx: 50, cy: 65, maxW: 60, maxH: 25 },
       ],
     },
   },
 ];
 
 export async function seedTemplates() {
-  const count = await db.templates.count();
-  if (count === 0) {
-    await db.templates.bulkAdd(BUILTIN_TEMPLATES);
-  }
+  // Always ensure built-in templates are present and updated, and remove orphaned ones.
+  await db.transaction('rw', db.templates, async () => {
+    const allTemplates = await db.templates.toArray();
+    const validIds = BUILTIN_TEMPLATES.map(t => t.id);
+    
+    // Purge removed builtin templates (like tpl-actual-id)
+    for (const tpl of allTemplates) {
+      if (tpl.isBuiltin && !validIds.includes(tpl.id)) {
+        await db.templates.delete(tpl.id);
+      }
+    }
+    
+    // Insert / update current ones
+    for (const tpl of BUILTIN_TEMPLATES) {
+      await db.templates.put(tpl);
+    }
+  });
 }
 
 export { db, BUILTIN_TEMPLATES };
