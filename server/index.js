@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import process from 'node:process';
 
 import authRoutes from './routes/auth.js';
 import cardsRoutes from './routes/cards.js';
@@ -35,7 +36,7 @@ app.use((req, res, next) => {
 });
 
 // Error handling
-app.use((err, req, res, next) => {
+app.use((err, req, res) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Something broke!' });
 });

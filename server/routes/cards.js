@@ -2,20 +2,24 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { stmts, DATA_DIR } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// Memory storage — we process with sharp then write manually
+// Memory storage — we store encrypted bytes directly
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB per image
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only image files are allowed'));
+    // Encrypted uploads are expected to be opaque bytes.
+    // We cannot validate original image types after encryption.
+    const okTypes = new Set(['application/octet-stream']);
+    if (!okTypes.has(file.mimetype)) {
+      return cb(new Error('Invalid encrypted upload type'));
+    }
+    cb(null, true);
   },
 });
 
@@ -29,8 +33,7 @@ function streamImage(res, filePath) {
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'Image not found' });
   }
-  const ext = path.extname(filePath).slice(1).toLowerCase();
-  const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+  const mime = 'application/octet-stream';
   res.setHeader('Content-Type', mime);
   res.setHeader('Cache-Control', 'private, max-age=86400');
   fs.createReadStream(filePath).pipe(res);
@@ -44,35 +47,29 @@ router.get('/', requireAuth, (req, res) => {
 
 // ── POST /api/cards ───────────────────────────────────────────────────────
 router.post('/', requireAuth, upload.fields([
-  { name: 'front', maxCount: 1 },
-  { name: 'back', maxCount: 1 },
+  { name: 'frontImg', maxCount: 1 },
+  { name: 'backImg', maxCount: 1 },
+  { name: 'frontThumb', maxCount: 1 },
+  { name: 'backThumb', maxCount: 1 }
 ]), async (req, res) => {
-  const { type, customType, label } = req.body;
-  if (!type || !label) {
-    return res.status(400).json({ error: 'type and label are required' });
+  const { type, customType, label, aspectRatio, frontIv, backIv, frontThumbIv, backThumbIv } = req.body;
+  
+  if (!type || !label || !frontIv || !backIv || !frontThumbIv || !backThumbIv) {
+    return res.status(400).json({ error: 'Missing required metadata or IVs' });
   }
-  if (!req.files?.front || !req.files?.back) {
-    return res.status(400).json({ error: 'Both front and back images are required' });
+  if (!req.files?.frontImg || !req.files?.backImg || !req.files?.frontThumb || !req.files?.backThumb) {
+    return res.status(400).json({ error: 'All 4 encrypted image files are required' });
   }
 
   const cardId = uuidv4();
   const userId = req.user.userId;
   const dir = cardDir(userId, cardId);
 
-  // Process images: save full-quality JPEG + thumbnail
-  const frontBuf = req.files.front[0].buffer;
-  const backBuf  = req.files.back[0].buffer;
-
-  const [frontMeta] = await Promise.all([
-    sharp(frontBuf).jpeg({ quality: 90 }).toFile(path.join(dir, 'front.jpg')),
-    sharp(backBuf).jpeg({ quality: 90 }).toFile(path.join(dir, 'back.jpg')),
-    sharp(frontBuf).resize(400).jpeg({ quality: 70 }).toFile(path.join(dir, 'front_thumb.jpg')),
-    sharp(backBuf).resize(400).jpeg({ quality: 70 }).toFile(path.join(dir, 'back_thumb.jpg')),
-  ]);
-
-  // Compute aspect ratio from front image
-  const frontInfo = await sharp(frontBuf).metadata();
-  const aspectRatio = frontInfo.width / frontInfo.height;
+  // Directly save encrypted raw binary buffers to disk
+  fs.writeFileSync(path.join(dir, 'front.enc'), req.files.frontImg[0].buffer);
+  fs.writeFileSync(path.join(dir, 'back.enc'), req.files.backImg[0].buffer);
+  fs.writeFileSync(path.join(dir, 'front_thumb.enc'), req.files.frontThumb[0].buffer);
+  fs.writeFileSync(path.join(dir, 'back_thumb.enc'), req.files.backThumb[0].buffer);
 
   const now = Date.now();
   stmts.createCard.run({
@@ -81,7 +78,11 @@ router.post('/', requireAuth, upload.fields([
     type,
     custom_type: customType || null,
     label,
-    aspect_ratio: aspectRatio,
+    aspect_ratio: parseFloat(aspectRatio || 1.586),
+    front_iv: frontIv,
+    back_iv: backIv,
+    front_thumb_iv: frontThumbIv,
+    back_thumb_iv: backThumbIv,
     created_at: now,
     updated_at: now,
   });
@@ -103,7 +104,7 @@ function imageHandler(side, thumb = false) {
     const card = stmts.getCardById.get(req.params.id);
     if (!card) return res.status(404).json({ error: 'Not found' });
     if (card.user_id !== req.user.userId) return res.status(403).json({ error: 'Forbidden' });
-    const filename = thumb ? `${side}_thumb.jpg` : `${side}.jpg`;
+    const filename = thumb ? `${side}_thumb.enc` : `${side}.enc`;
     streamImage(res, path.join(DATA_DIR, 'uploads', card.user_id, card.id, filename));
   };
 }

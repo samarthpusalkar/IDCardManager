@@ -1,42 +1,42 @@
 import { useState, useEffect } from 'react';
 import { useCardsStore, useToastStore } from '../stores';
-import { apiFetch } from '../api/client';
 
 export default function CardLibrary({ onNavigate }) {
-  const { cards, deleteCard } = useCardsStore();
+  const { cards, deleteCard, decryptThumbnail } = useCardsStore();
   const { addToast } = useToastStore();
   const [filter, setFilter] = useState('ALL');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [thumbUrls, setThumbUrls] = useState({});
 
   useEffect(() => {
-    const urls = {};
-    const abortController = new AbortController();
-    
-    const loadSecureImage = async (url, key) => {
+    let urls = {};
+    let abortController = new AbortController();
+
+    const loadSecureImage = async (card, side) => {
       try {
-        // Strip /api prefix if present because apiFetch adds it automatically
-        const endpoint = url.startsWith('/api') ? url.slice(4) : url;
-        const res = await apiFetch(endpoint, { signal: abortController.signal });
-        const blob = await res.blob();
-        urls[key] = URL.createObjectURL(blob);
+        const iv = side === 'front' ? card.frontThumbIv : card.backThumbIv;
+        const url = await decryptThumbnail(card.id, side, iv);
+        urls[card.id + '-' + side] = url;
         setThumbUrls({ ...urls });
       } catch (e) {
-        if (e.name !== 'AbortError') console.error('Error loading thumbnail', e);
+        if (e.name !== 'AbortError') {
+          console.error('Error loading thumbnail', e);
+          addToast(`Failed to load ${side} thumbnail for ${card.label}`, 'error');
+        }
       }
     };
 
     cards.forEach((card) => {
-      // Use the injected URLs from our api store wrapper
-      if (card.frontThumbUrl) loadSecureImage(card.frontThumbUrl, card.id + '-front');
-      if (card.backThumbUrl)  loadSecureImage(card.backThumbUrl, card.id + '-back');
+      loadSecureImage(card, 'front');
+      loadSecureImage(card, 'back');
     });
 
     return () => {
       abortController.abort();
+      // Clean up object URLs when component unmounts
       Object.values(urls).forEach(URL.revokeObjectURL);
     };
-  }, [cards]);
+  }, [cards, decryptThumbnail, addToast]);
 
   const filteredCards = filter === 'ALL' ? cards : cards.filter((c) => c.type === filter);
 

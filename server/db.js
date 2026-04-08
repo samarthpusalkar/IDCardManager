@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import process from 'node:process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -23,7 +24,14 @@ db.exec(`
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
     recovery_hash TEXT NOT NULL,
+    encrypted_vault_key TEXT,
+    encrypted_vault_key_iv TEXT,
+    encrypted_vault_key_salt TEXT,
+    recovery_encrypted_vault_key TEXT,
+    recovery_encrypted_vault_key_iv TEXT,
+    recovery_encrypted_vault_key_salt TEXT,
     role TEXT NOT NULL DEFAULT 'user',
     created_at INTEGER NOT NULL
   );
@@ -35,6 +43,10 @@ db.exec(`
     custom_type TEXT,
     label TEXT NOT NULL,
     aspect_ratio REAL,
+    front_iv TEXT NOT NULL,
+    back_iv TEXT NOT NULL,
+    front_thumb_iv TEXT NOT NULL,
+    back_thumb_iv TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -63,6 +75,27 @@ db.exec(`
     FOREIGN KEY(card_id) REFERENCES cards(id) ON DELETE CASCADE
   );
 `);
+
+// Lightweight migrations for existing databases.
+const userColumns = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+if (!userColumns.includes('encrypted_vault_key')) {
+  db.exec('ALTER TABLE users ADD COLUMN encrypted_vault_key TEXT');
+}
+if (!userColumns.includes('encrypted_vault_key_iv')) {
+  db.exec('ALTER TABLE users ADD COLUMN encrypted_vault_key_iv TEXT');
+}
+if (!userColumns.includes('encrypted_vault_key_salt')) {
+  db.exec('ALTER TABLE users ADD COLUMN encrypted_vault_key_salt TEXT');
+}
+if (!userColumns.includes('recovery_encrypted_vault_key')) {
+  db.exec('ALTER TABLE users ADD COLUMN recovery_encrypted_vault_key TEXT');
+}
+if (!userColumns.includes('recovery_encrypted_vault_key_iv')) {
+  db.exec('ALTER TABLE users ADD COLUMN recovery_encrypted_vault_key_iv TEXT');
+}
+if (!userColumns.includes('recovery_encrypted_vault_key_salt')) {
+  db.exec('ALTER TABLE users ADD COLUMN recovery_encrypted_vault_key_salt TEXT');
+}
 
 // ── Built-in Templates ───────────────────────────────────────────────────
 const BUILTIN_TEMPLATES = [
@@ -133,17 +166,34 @@ export const stmts = {
   getUserById:       db.prepare('SELECT * FROM users WHERE id = ?'),
   getUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
   createUser:        db.prepare(`
-    INSERT INTO users (id, username, password_hash, recovery_hash, created_at)
-    VALUES (@id, @username, @password_hash, @recovery_hash, @created_at)
+    INSERT INTO users (
+      id, username, password_hash, salt, recovery_hash,
+      encrypted_vault_key, encrypted_vault_key_iv, encrypted_vault_key_salt,
+      recovery_encrypted_vault_key, recovery_encrypted_vault_key_iv, recovery_encrypted_vault_key_salt,
+      created_at
+    )
+    VALUES (
+      @id, @username, @password_hash, @salt, @recovery_hash,
+      @encrypted_vault_key, @encrypted_vault_key_iv, @encrypted_vault_key_salt,
+      @recovery_encrypted_vault_key, @recovery_encrypted_vault_key_iv, @recovery_encrypted_vault_key_salt,
+      @created_at
+    )
   `),
   updatePassword:    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?'),
+  updateEncryptedVaultKey: db.prepare(`
+    UPDATE users
+    SET
+      encrypted_vault_key = ?, encrypted_vault_key_iv = ?, encrypted_vault_key_salt = ?,
+      recovery_encrypted_vault_key = ?, recovery_encrypted_vault_key_iv = ?, recovery_encrypted_vault_key_salt = ?
+    WHERE id = ?
+  `),
 
   // Cards
-  getCardsByUser: db.prepare('SELECT id, user_id, type, custom_type, label, aspect_ratio, created_at, updated_at FROM cards WHERE user_id = ? ORDER BY created_at DESC'),
-  getCardById:    db.prepare('SELECT id, user_id, type, custom_type, label, aspect_ratio, created_at, updated_at FROM cards WHERE id = ?'),
+  getCardsByUser: db.prepare('SELECT id, user_id, type, custom_type, label, aspect_ratio, front_iv, back_iv, front_thumb_iv, back_thumb_iv, created_at, updated_at FROM cards WHERE user_id = ? ORDER BY created_at DESC'),
+  getCardById:    db.prepare('SELECT id, user_id, type, custom_type, label, aspect_ratio, front_iv, back_iv, front_thumb_iv, back_thumb_iv, created_at, updated_at FROM cards WHERE id = ?'),
   createCard:     db.prepare(`
-    INSERT INTO cards (id, user_id, type, custom_type, label, aspect_ratio, created_at, updated_at)
-    VALUES (@id, @user_id, @type, @custom_type, @label, @aspect_ratio, @created_at, @updated_at)
+    INSERT INTO cards (id, user_id, type, custom_type, label, aspect_ratio, front_iv, back_iv, front_thumb_iv, back_thumb_iv, created_at, updated_at)
+    VALUES (@id, @user_id, @type, @custom_type, @label, @aspect_ratio, @front_iv, @back_iv, @front_thumb_iv, @back_thumb_iv, @created_at, @updated_at)
   `),
   deleteCard:     db.prepare('DELETE FROM cards WHERE id = ?'),
 

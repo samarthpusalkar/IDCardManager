@@ -35,8 +35,8 @@ export default function AuthScreen() {
         setRecoveryCodeData({ token: res.token, user: res.user, code: res.recoveryCode });
       }
     } else if (isLogin === 'recover') {
-      const success = await recoverPassword(username, recoveryCode, password);
-      if (success) {
+      const result = await recoverPassword(username, recoveryCode, password);
+      if (result.success) {
         setIsLogin('login');
       }
     }
@@ -61,7 +61,7 @@ export default function AuthScreen() {
             <p style={{ marginBottom: 'var(--space-2)' }}><strong>Save this code immediately.</strong> It is mathematically impossible for us to reset your password without it.</p>
             <p>Your cards are heavily secured. If you forget your password, this code is the <em>only</em> way to recover your account.</p>
           </div>
-          <button 
+          <button
             className="btn btn-primary btn-lg w-full"
             onClick={() => completeLogin(recoveryCodeData.token, recoveryCodeData.user)}
           >

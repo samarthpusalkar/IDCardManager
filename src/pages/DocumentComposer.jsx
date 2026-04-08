@@ -10,6 +10,7 @@ import {
   useToastStore,
 } from '../stores';
 import { apiFetch } from '../api/client';
+import * as crypto from '../api/crypto';
 
 // A4 at 150 DPI for preview (half of print quality)
 const PREVIEW_DPI = 150;
@@ -33,15 +34,15 @@ const EXPORT_FILTERS = [
   { value: 'watermarked', label: 'Watermarked', icon: '💧' },
 ];
 
-export default function DocumentComposer({ onNavigate, editDocId, preselectedCardId }) {
+export default function DocumentComposer({ onNavigate, preselectedCardId }) {
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
   const canvasContainerRef = useRef(null);
 
-  const { currentUser } = useAuthStore();
+  const { currentUser, vaultKey } = useAuthStore();
   const { cards, getCard } = useCardsStore();
   const { templates } = useTemplatesStore();
-  const { addDocument, updateDocument, getDocument } = useDocumentsStore();
+  const { addDocument } = useDocumentsStore();
   const { addToast } = useToastStore();
 
   const getSavedSetting = (key, defaultValue) => {
@@ -52,7 +53,9 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
         const parsed = JSON.parse(raw);
         if (parsed[key] !== undefined) return parsed[key];
       }
-    } catch(e){}
+    } catch {
+      return defaultValue;
+    }
     return defaultValue;
   };
 
@@ -65,7 +68,6 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
     { type: 'back', cx: 50, cy: 75, maxW: 90, maxH: 45 },
   ]));
   const [purpose, setPurpose] = useState('');
-  const [overlays, setOverlays] = useState([]);
   const [exportFilter, setExportFilter] = useState(() => getSavedSetting('exportFilter', 'original'));
   const [watermarkText, setWatermarkText] = useState(() => getSavedSetting('watermarkText', 'COPY'));
   const [exporting, setExporting] = useState(false);
@@ -105,7 +107,6 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
   ]);
 
   // Signature
-  const [signatureFile, setSignatureFile] = useState(null);
   const sigInputRef = useRef(null);
 
   // Active tool tab
@@ -151,6 +152,11 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
     canvas.clear();
     canvas.backgroundColor = '#ffffff';
 
+    if (!vaultKey) {
+      console.error('Vault key not available');
+      return;
+    }
+
     const card = await getCard(selectedCardId);
     if (!card) return;
 
@@ -165,14 +171,16 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
 
     for (const slot of slots) {
       if ((slot.type === 'front' && !card.frontImageUrl) || (slot.type === 'back' && !card.backImageUrl)) continue;
-      const imageUrl = slot.type === 'front' ? card.frontImageUrl : card.backImageUrl;
-      
+      const side = slot.type === 'front' ? 'front' : 'back';
+      const iv = slot.type === 'front' ? card.frontIv : card.backIv;
+
       let url = null;
       try {
-        const endpoint = imageUrl.startsWith('/api') ? imageUrl.slice(4) : imageUrl;
-        const res = await apiFetch(endpoint);
-        const blob = await res.blob();
-        url = URL.createObjectURL(blob);
+        // Fetch and decrypt the full image
+        const res = await apiFetch(`/cards/${selectedCardId}/${side}`);
+        const encryptedBlob = await res.blob();
+        const decryptedBlob = await crypto.decryptBlob(encryptedBlob, iv, vaultKey);
+        url = URL.createObjectURL(decryptedBlob);
 
         const img = await FabricImage.fromURL(url);
         const cxPx = (slot.cx / 100) * previewWidth;
@@ -210,7 +218,7 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
     // Re-add overlay objects
     overlayObjects.forEach((obj) => canvas.add(obj));
     canvas.renderAll();
-  }, [selectedCardId, selectedTemplateId, templates, getCard, canvasReady, useCustomLayout, customLayout, previewWidth, previewHeight]);
+  }, [selectedCardId, selectedTemplateId, templates, getCard, useCustomLayout, customLayout, previewWidth, previewHeight, vaultKey]);
 
   // Render card images when card or template changes
   useEffect(() => {
@@ -466,15 +474,27 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
   };
 
   // Card thumbnails
-  const [cardThumbUrls, setCardThumbUrls] = useState({});
   useEffect(() => {
     const urls = {};
-    cards.forEach((card) => {
-      if (card.frontThumb) {
-        urls[card.id] = URL.createObjectURL(card.frontThumb);
+    const loadThumbs = async () => {
+      const { vaultKey } = useAuthStore.getState();
+      if (!vaultKey) {
+        console.error('Vault key not available');
+        return;
       }
-    });
-    setCardThumbUrls(urls);
+      for (const card of cards) {
+        try {
+          // Load front thumb
+          const res = await apiFetch(`/cards/${card.id}/front/thumb`);
+          const encryptedBlob = await res.blob();
+          const decryptedBlob = await crypto.decryptBlob(encryptedBlob, card.frontThumbIv, vaultKey);
+          urls[card.id] = URL.createObjectURL(decryptedBlob);
+        } catch (e) {
+          console.error('Error loading card thumb', e);
+        }
+      }
+    };
+    loadThumbs();
     return () => Object.values(urls).forEach(URL.revokeObjectURL);
   }, [cards]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useDocumentsStore, useCardsStore, useToastStore } from '../stores';
 
 export default function DocumentHistory({ onNavigate }) {

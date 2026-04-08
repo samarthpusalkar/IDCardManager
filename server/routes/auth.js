@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { stmts } from '../db.js';
-import { signToken } from '../middleware/auth.js';
+import { requireAuth, signToken } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -26,6 +26,9 @@ router.post('/register', async (req, res) => {
   // Generate recovery code (shown once, never stored in plain text)
   const recoveryCode = `${uuidv4().replace(/-/g, '').slice(0, 6).toUpperCase()}-${uuidv4().replace(/-/g, '').slice(0, 6).toUpperCase()}-${uuidv4().replace(/-/g, '').slice(0, 6).toUpperCase()}`;
 
+  // Unique salt per user for deriving their locally secure Vault Key
+  const salt = uuidv4().replace(/-/g, '');
+
   const [passHash, recoveryHash] = await Promise.all([
     bcrypt.hash(password, 12),
     bcrypt.hash(recoveryCode, 12),
@@ -35,7 +38,14 @@ router.post('/register', async (req, res) => {
     id: uuidv4(),
     username: trimmed,
     password_hash: passHash,
+    salt,
     recovery_hash: recoveryHash,
+    encrypted_vault_key: null,
+    encrypted_vault_key_iv: null,
+    encrypted_vault_key_salt: null,
+    recovery_encrypted_vault_key: null,
+    recovery_encrypted_vault_key_iv: null,
+    recovery_encrypted_vault_key_salt: null,
     created_at: Date.now(),
   };
 
@@ -45,6 +55,7 @@ router.post('/register', async (req, res) => {
   res.status(201).json({
     token,
     user: { id: user.id, username: user.username },
+    salt: user.salt,
     recoveryCode, // shown once on frontend, never sent again
   });
 });
@@ -67,7 +78,65 @@ router.post('/login', async (req, res) => {
   }
 
   const token = signToken({ userId: user.id, username: user.username });
-  res.json({ token, user: { id: user.id, username: user.username } });
+  if (!user.encrypted_vault_key || !user.encrypted_vault_key_iv || !user.encrypted_vault_key_salt) {
+    return res.status(409).json({ error: 'Vault is not initialized. Please recover account.' });
+  }
+  res.json({
+    token,
+    user: { id: user.id, username: user.username },
+    salt: user.salt,
+    encryptedVaultKey: user.encrypted_vault_key,
+    encryptedVaultKeyIv: user.encrypted_vault_key_iv,
+    encryptedVaultKeySalt: user.encrypted_vault_key_salt,
+  });
+});
+
+// ── PUT /api/auth/vault-key ──────────────────────────────────────────────
+router.put('/vault-key', requireAuth, async (req, res) => {
+  const {
+    encryptedVaultKey,
+    encryptedVaultKeyIv,
+    encryptedVaultKeySalt,
+    recoveryEncryptedVaultKey,
+    recoveryEncryptedVaultKeyIv,
+    recoveryEncryptedVaultKeySalt,
+  } = req.body;
+  if (!encryptedVaultKey || !encryptedVaultKeyIv || !encryptedVaultKeySalt) {
+    return res.status(400).json({ error: 'Missing vault key payload' });
+  }
+  if (!recoveryEncryptedVaultKey || !recoveryEncryptedVaultKeyIv || !recoveryEncryptedVaultKeySalt) {
+    return res.status(400).json({ error: 'Missing recovery vault key payload' });
+  }
+
+  const user = stmts.getUserById.get(req.user.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  stmts.updateEncryptedVaultKey.run(
+    encryptedVaultKey,
+    encryptedVaultKeyIv,
+    encryptedVaultKeySalt,
+    recoveryEncryptedVaultKey,
+    recoveryEncryptedVaultKeyIv,
+    recoveryEncryptedVaultKeySalt,
+    user.id
+  );
+  res.json({ message: 'Vault key updated' });
+});
+
+// ── GET /api/auth/salt ───────────────────────────────────────────────────
+router.get('/salt', (req, res) => {
+  const { username } = req.query;
+  if (!username) return res.status(400).json({ error: 'Username required' });
+
+  const user = stmts.getUserByUsername.get(username.trim().toLowerCase());
+  if (!user) {
+    // Return a fake salt to prevent username enumeration attacks
+    return res.json({ salt: '00000000000000000000000000000000' });
+  }
+
+  res.json({ salt: user.salt });
 });
 
 // ── POST /api/auth/recover ───────────────────────────────────────────────
@@ -90,11 +159,21 @@ router.post('/recover', async (req, res) => {
   if (!valid) {
     return res.status(400).json({ error: 'Invalid username or recovery code' });
   }
+  if (!user.recovery_encrypted_vault_key || !user.recovery_encrypted_vault_key_iv || !user.recovery_encrypted_vault_key_salt) {
+    return res.status(409).json({ error: 'Recovery vault data missing. Cannot reset without data loss.' });
+  }
 
   const newHash = await bcrypt.hash(newPassword, 12);
   stmts.updatePassword.run(newHash, user.id);
-
-  res.json({ message: 'Password reset successfully. Please log in.' });
+  const token = signToken({ userId: user.id, username: user.username });
+  res.json({
+    message: 'Password reset successfully.',
+    token,
+    user: { id: user.id, username: user.username },
+    recoveryEncryptedVaultKey: user.recovery_encrypted_vault_key,
+    recoveryEncryptedVaultKeyIv: user.recovery_encrypted_vault_key_iv,
+    recoveryEncryptedVaultKeySalt: user.recovery_encrypted_vault_key_salt,
+  });
 });
 
 export default router;

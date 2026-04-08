@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import process from 'node:process';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'cardcomposer-dev-secret-change-in-production';
 

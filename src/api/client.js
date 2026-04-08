@@ -6,7 +6,7 @@ function getToken() {
     try {
       const session = JSON.parse(sessionStr);
       return session.token;
-    } catch (e) {
+    } catch {
       return null;
     }
   }

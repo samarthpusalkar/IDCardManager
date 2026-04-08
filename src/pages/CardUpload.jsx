@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useCardsStore, useAuthStore, useToastStore } from '../stores';
+import { useCardsStore, useToastStore } from '../stores';
 
 const CARD_TYPES = [
   { value: 'PAN', label: 'PAN Card' },
@@ -11,7 +11,6 @@ const CARD_TYPES = [
 ];
 
 export default function CardUpload({ onNavigate }) {
-  const { currentUser } = useAuthStore();
   const { addCard } = useCardsStore();
   const { addToast } = useToastStore();
 
@@ -20,8 +19,7 @@ export default function CardUpload({ onNavigate }) {
   const [label, setLabel] = useState('');
   const [frontImage, setFrontImage] = useState(null);
   const [backImage, setBackImage] = useState(null);
-  const [frontPreview, setFrontPreview] = useState(null);
-  const [backPreview, setBackPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const frontRef = useRef(null);
@@ -33,13 +31,10 @@ export default function CardUpload({ onNavigate }) {
       addToast('Please select an image file', 'error');
       return;
     }
-    const url = URL.createObjectURL(file);
     if (side === 'front') {
       setFrontImage(file);
-      setFrontPreview(url);
     } else {
       setBackImage(file);
-      setBackPreview(url);
     }
   };
 
@@ -57,6 +52,18 @@ export default function CardUpload({ onNavigate }) {
 
   const handleDragLeave = (e) => {
     e.currentTarget.classList.remove('drag-over');
+  };
+
+  const togglePreview = async () => {
+    if (!frontImage || !backImage) {
+      addToast('Please upload both images first', 'warning');
+      return;
+    }
+    if (!label.trim()) {
+      addToast('Please enter a label first', 'warning');
+      return;
+    }
+    setPreviewing(!previewing);
   };
 
   const handleSubmit = async (e) => {
@@ -84,7 +91,7 @@ export default function CardUpload({ onNavigate }) {
       onNavigate('cards');
     } catch (err) {
       console.error(err);
-      addToast('Failed to save card', 'error');
+      addToast('Failed to save card: ' + err.message, 'error');
     }
     setSubmitting(false);
   };
@@ -92,12 +99,8 @@ export default function CardUpload({ onNavigate }) {
   const removeImage = (side) => {
     if (side === 'front') {
       setFrontImage(null);
-      if (frontPreview) URL.revokeObjectURL(frontPreview);
-      setFrontPreview(null);
     } else {
       setBackImage(null);
-      if (backPreview) URL.revokeObjectURL(backPreview);
-      setBackPreview(null);
     }
   };
 
@@ -115,9 +118,17 @@ export default function CardUpload({ onNavigate }) {
             <h4 style={{ marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <span style={{ fontSize: 'var(--text-lg)' }}>📸</span> Front Side
             </h4>
-            {frontPreview ? (
+            {frontImage ? (
               <div className="image-preview">
-                <img src={frontPreview} alt="Front preview" style={{ maxHeight: 240 }} />
+                <div style={{ textAlign: 'center', padding: 'var(--space-4)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-2)' }}>✅</div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                    {frontImage.name}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                    {(frontImage.size / 1024).toFixed(1)} KB
+                  </div>
+                </div>
                 <div className="image-preview-overlay">
                   <button
                     type="button"
@@ -157,9 +168,17 @@ export default function CardUpload({ onNavigate }) {
             <h4 style={{ marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <span style={{ fontSize: 'var(--text-lg)' }}>📸</span> Back Side
             </h4>
-            {backPreview ? (
+            {backImage ? (
               <div className="image-preview">
-                <img src={backPreview} alt="Back preview" style={{ maxHeight: 240 }} />
+                <div style={{ textAlign: 'center', padding: 'var(--space-4)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-2)' }}>✅</div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                    {backImage.name}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                    {(backImage.size / 1024).toFixed(1)} KB
+                  </div>
+                </div>
                 <div className="image-preview-overlay">
                   <button
                     type="button"
@@ -250,15 +269,84 @@ export default function CardUpload({ onNavigate }) {
               Cancel
             </button>
             <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => togglePreview()}
+            >
+              {previewing ? 'Cancel Preview' : '👁️ Preview'}
+            </button>
+            <button
               type="submit"
               className="btn btn-primary btn-lg"
-              disabled={submitting || !frontImage || !backImage}
+              disabled={submitting || !frontImage || !backImage || !label.trim()}
             >
               {submitting ? <span className="spinner" /> : '💾 Save Card'}
             </button>
           </div>
         </div>
       </form>
+
+      {/* Preview Modal */}
+      {previewing && (
+        <div className="modal-overlay" onClick={() => setPreviewing(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600 }}>
+            <div className="modal-header">
+              <span className="modal-title">Preview Upload</span>
+              <button className="btn btn-ghost" onClick={() => setPreviewing(false)}>✕</button>
+            </div>
+            <div style={{ padding: 'var(--space-4)' }}>
+              <p style={{ marginBottom: 'var(--space-4)' }}>
+                Before saving, please verify your information. Once saved, your cards will be
+                <strong> encrypted on your device</strong> and cannot be read by the server.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                <div>
+                  <h5 style={{ marginBottom: 'var(--space-2)' }}>Front Side</h5>
+                  <div style={{ background: 'var(--bg-tertiary)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>
+                      <strong>File:</strong> {frontImage?.name}
+                    </div>
+                    <div style={{ fontSize: 'var(--text-sm)' }}>
+                      <strong>Size:</strong> {(frontImage?.size / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h5 style={{ marginBottom: 'var(--space-2)' }}>Back Side</h5>
+                  <div style={{ background: 'var(--bg-tertiary)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>
+                      <strong>File:</strong> {backImage?.name}
+                    </div>
+                    <div style={{ fontSize: 'var(--text-sm)' }}>
+                      <strong>Size:</strong> {(backImage?.size / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: 'var(--bg-warning)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', marginTop: 'var(--space-4)' }}>
+                <strong>🔒 Zero-Knowledge Encryption:</strong>
+                <p style={{ fontSize: 'var(--text-xs)', margin: 'var(--space-2) 0 0 0', color: 'var(--text-secondary)' }}>
+                  Your images will be resized locally, encrypted with a key derived from your password,
+                  and the server will only store scrambled bytes. If you forget your password, your
+                  cards will be permanently inaccessible.
+                </p>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setPreviewing(false)}>
+                Go Back
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleSubmit}
+                disabled={submitting}
+              >
+                {submitting ? <span className="spinner" /> : 'Confirm & Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
