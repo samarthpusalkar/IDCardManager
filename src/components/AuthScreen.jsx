@@ -10,6 +10,18 @@ export default function AuthScreen() {
   const { login, register, error, completeLogin, recoverPassword } = useAuthStore();
   const [submitting, setSubmitting] = useState(false);
   const [recoveryCodeData, setRecoveryCodeData] = useState(null);
+  const [copiedRecoveryCode, setCopiedRecoveryCode] = useState(false);
+
+  const handleCopyRecoveryCode = async () => {
+    if (!recoveryCodeData?.code) return;
+    try {
+      await navigator.clipboard.writeText(recoveryCodeData.code);
+      setCopiedRecoveryCode(true);
+      setTimeout(() => setCopiedRecoveryCode(false), 1500);
+    } catch (err) {
+      setCopiedRecoveryCode(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,8 +64,18 @@ export default function AuthScreen() {
             <div className="auth-logo-icon" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>🔑</div>
             <h2 className="text-gradient">Secret Recovery Code</h2>
           </div>
-          <div style={{ background: 'var(--bg-tertiary)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', textAlign: 'center', marginBottom: 'var(--space-4)', border: '1px solid var(--border-subtle)' }}>
-            <p style={{ fontWeight: 'bold', fontSize: '1.25rem', letterSpacing: '2px', color: 'var(--text-primary)' }}>
+          <div style={{ background: 'var(--bg-tertiary)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', textAlign: 'center', marginBottom: 'var(--space-4)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={handleCopyRecoveryCode}
+              aria-label="Copy recovery code"
+              title="Copy recovery code"
+              style={{ minWidth: 'fit-content', padding: '0.5rem 0.75rem' }}
+            >
+              {copiedRecoveryCode ? 'Copied' : 'Copy'}
+            </button>
+            <p style={{ fontWeight: 'bold', fontSize: '1.25rem', letterSpacing: '2px', color: 'var(--text-primary)', margin: 0 }}>
               {recoveryCodeData.code}
             </p>
           </div>
