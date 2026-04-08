@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCardsStore, useToastStore } from '../stores';
+import ImageEditModal from '../components/ImageEditModal';
 
 const CARD_TYPES = [
   { value: 'PAN', label: 'PAN Card' },
@@ -19,11 +20,21 @@ export default function CardUpload({ onNavigate }) {
   const [label, setLabel] = useState('');
   const [frontImage, setFrontImage] = useState(null);
   const [backImage, setBackImage] = useState(null);
+  const [frontPreview, setFrontPreview] = useState(null);
+  const [backPreview, setBackPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editingImage, setEditingImage] = useState(null);
 
   const frontRef = useRef(null);
   const backRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (frontPreview) URL.revokeObjectURL(frontPreview);
+      if (backPreview) URL.revokeObjectURL(backPreview);
+    };
+  }, [frontPreview, backPreview]);
 
   const handleImageSelect = (file, side) => {
     if (!file) return;
@@ -31,11 +42,7 @@ export default function CardUpload({ onNavigate }) {
       addToast('Please select an image file', 'error');
       return;
     }
-    if (side === 'front') {
-      setFrontImage(file);
-    } else {
-      setBackImage(file);
-    }
+    setEditingImage({ file, side });
   };
 
   const handleDrop = (e, side) => {
@@ -54,7 +61,7 @@ export default function CardUpload({ onNavigate }) {
     e.currentTarget.classList.remove('drag-over');
   };
 
-  const togglePreview = async () => {
+  const togglePreview = () => {
     if (!frontImage || !backImage) {
       addToast('Please upload both images first', 'warning');
       return;
@@ -63,7 +70,21 @@ export default function CardUpload({ onNavigate }) {
       addToast('Please enter a label first', 'warning');
       return;
     }
-    setPreviewing(!previewing);
+    setPreviewing((prev) => !prev);
+  };
+
+  const handleApplyEditedImage = (side, processedFile) => {
+    const url = URL.createObjectURL(processedFile);
+    if (side === 'front') {
+      if (frontPreview) URL.revokeObjectURL(frontPreview);
+      setFrontImage(processedFile);
+      setFrontPreview(url);
+    } else {
+      if (backPreview) URL.revokeObjectURL(backPreview);
+      setBackImage(processedFile);
+      setBackPreview(url);
+    }
+    setEditingImage(null);
   };
 
   const handleSubmit = async (e) => {
@@ -98,17 +119,30 @@ export default function CardUpload({ onNavigate }) {
 
   const removeImage = (side) => {
     if (side === 'front') {
+      if (frontPreview) URL.revokeObjectURL(frontPreview);
       setFrontImage(null);
+      setFrontPreview(null);
     } else {
+      if (backPreview) URL.revokeObjectURL(backPreview);
       setBackImage(null);
+      setBackPreview(null);
     }
   };
 
   return (
     <div className="page animate-in">
+      <ImageEditModal
+        isOpen={Boolean(editingImage)}
+        file={editingImage?.file ?? null}
+        side={editingImage?.side ?? 'front'}
+        onClose={() => setEditingImage(null)}
+        onApply={handleApplyEditedImage}
+        addToast={addToast}
+      />
+
       <div className="page-header">
         <h1>Upload Card</h1>
-        <p>Add a new identity card to your library. Upload both front and back images.</p>
+        <p>Add a new identity card to your library. Edit front/back images locally before preview and upload.</p>
       </div>
 
       <form onSubmit={handleSubmit}>
@@ -120,15 +154,7 @@ export default function CardUpload({ onNavigate }) {
             </h4>
             {frontImage ? (
               <div className="image-preview">
-                <div style={{ textAlign: 'center', padding: 'var(--space-4)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
-                  <div style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-2)' }}>✅</div>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                    {frontImage.name}
-                  </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                    {(frontImage.size / 1024).toFixed(1)} KB
-                  </div>
-                </div>
+                <img src={frontPreview} alt="Front preview" style={{ maxHeight: 240 }} />
                 <div className="image-preview-overlay">
                   <button
                     type="button"
@@ -159,7 +185,10 @@ export default function CardUpload({ onNavigate }) {
               type="file"
               accept="image/*"
               style={{ display: 'none' }}
-              onChange={(e) => handleImageSelect(e.target.files[0], 'front')}
+              onChange={(e) => {
+                handleImageSelect(e.target.files[0], 'front');
+                e.target.value = '';
+              }}
             />
           </div>
 
@@ -170,15 +199,7 @@ export default function CardUpload({ onNavigate }) {
             </h4>
             {backImage ? (
               <div className="image-preview">
-                <div style={{ textAlign: 'center', padding: 'var(--space-4)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
-                  <div style={{ fontSize: 'var(--text-3xl)', marginBottom: 'var(--space-2)' }}>✅</div>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                    {backImage.name}
-                  </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                    {(backImage.size / 1024).toFixed(1)} KB
-                  </div>
-                </div>
+                <img src={backPreview} alt="Back preview" style={{ maxHeight: 240 }} />
                 <div className="image-preview-overlay">
                   <button
                     type="button"
@@ -209,7 +230,10 @@ export default function CardUpload({ onNavigate }) {
               type="file"
               accept="image/*"
               style={{ display: 'none' }}
-              onChange={(e) => handleImageSelect(e.target.files[0], 'back')}
+              onChange={(e) => {
+                handleImageSelect(e.target.files[0], 'back');
+                e.target.value = '';
+              }}
             />
           </div>
         </div>
