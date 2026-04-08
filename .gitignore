@@ -26,3 +26,25 @@ dist-ssr
 # Database and uploaded ID cards
 server/data/
 server/data/*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE local settings
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.claude/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
