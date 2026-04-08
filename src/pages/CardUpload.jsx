@@ -5,7 +5,7 @@ const CARD_TYPES = [
   { value: 'PAN', label: 'PAN Card' },
   { value: 'DL', label: 'Driving License' },
   { value: 'AADHAAR', label: 'Aadhaar Card' },
-  { value: 'VOTER_ID', label: 'Voter ID' },
+  { value: 'VOTER_ID', label: 'Voter ID / Election Card' },
   { value: 'PASSPORT', label: 'Passport' },
   { value: 'OTHER', label: 'Other' },
 ];

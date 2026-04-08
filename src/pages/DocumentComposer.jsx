@@ -139,12 +139,6 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
     };
   }, []);
 
-  // Render card images when card or template changes
-  useEffect(() => {
-    if (!canvasReady || !fabricRef.current) return;
-    renderCardOnCanvas();
-  }, [selectedCardId, selectedTemplateId, canvasReady, useCustomLayout, customLayout]);
-
   const renderCardOnCanvas = useCallback(async () => {
     const canvas = fabricRef.current;
     if (!canvas || !selectedCardId) return;
@@ -169,6 +163,7 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
     }
 
     for (const slot of slots) {
+      if ((slot.type === 'front' && !card.frontImage) || (slot.type === 'back' && !card.backImage)) continue;
       const blob = slot.type === 'front' ? card.frontImage : card.backImage;
       const url = URL.createObjectURL(blob);
 
@@ -209,7 +204,13 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
     // Re-add overlay objects
     overlayObjects.forEach((obj) => canvas.add(obj));
     canvas.renderAll();
-  }, [selectedCardId, selectedTemplateId, templates, getCard, canvasReady]);
+  }, [selectedCardId, selectedTemplateId, templates, getCard, canvasReady, useCustomLayout, customLayout, previewWidth, previewHeight]);
+
+  // Render card images when card or template changes
+  useEffect(() => {
+    if (!canvasReady || !fabricRef.current) return;
+    renderCardOnCanvas();
+  }, [renderCardOnCanvas, canvasReady]);
 
   // Add text overlay
   const addTextOverlay = (text) => {
@@ -524,7 +525,7 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
                   <option value="">Choose a card...</option>
                   {cards.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.label} ({c.customType || c.type})
+                      {c.label}
                     </option>
                   ))}
                 </select>
@@ -791,21 +792,22 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
 
         {/* Canvas Area */}
         <div className="composer-canvas-area" ref={canvasContainerRef}>
-          {!selectedCardId ? (
+          <div
+            className="composer-canvas-wrapper"
+            style={{
+              transform: `scale(${displayScale})`,
+              transformOrigin: 'top center',
+              display: selectedCardId ? 'block' : 'none'
+            }}
+          >
+            <canvas ref={canvasRef} />
+          </div>
+          
+          {!selectedCardId && (
             <div className="empty-state">
               <div className="empty-state-icon">🖨️</div>
               <h3>Select a card to begin</h3>
               <p>Choose a card from the sidebar to start composing your A4 document.</p>
-            </div>
-          ) : (
-            <div
-              className="composer-canvas-wrapper"
-              style={{
-                transform: `scale(${displayScale})`,
-                transformOrigin: 'top center',
-              }}
-            >
-              <canvas ref={canvasRef} />
             </div>
           )}
         </div>
