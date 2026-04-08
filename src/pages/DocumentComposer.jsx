@@ -9,6 +9,7 @@ import {
   useAuthStore,
   useToastStore,
 } from '../stores';
+import { apiFetch } from '../api/client';
 
 // A4 at 150 DPI for preview (half of print quality)
 const PREVIEW_DPI = 150;
@@ -163,11 +164,16 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
     }
 
     for (const slot of slots) {
-      if ((slot.type === 'front' && !card.frontImage) || (slot.type === 'back' && !card.backImage)) continue;
-      const blob = slot.type === 'front' ? card.frontImage : card.backImage;
-      const url = URL.createObjectURL(blob);
-
+      if ((slot.type === 'front' && !card.frontImageUrl) || (slot.type === 'back' && !card.backImageUrl)) continue;
+      const imageUrl = slot.type === 'front' ? card.frontImageUrl : card.backImageUrl;
+      
+      let url = null;
       try {
+        const endpoint = imageUrl.startsWith('/api') ? imageUrl.slice(4) : imageUrl;
+        const res = await apiFetch(endpoint);
+        const blob = await res.blob();
+        url = URL.createObjectURL(blob);
+
         const img = await FabricImage.fromURL(url);
         const cxPx = (slot.cx / 100) * previewWidth;
         const cyPx = (slot.cy / 100) * previewHeight;
@@ -197,7 +203,7 @@ export default function DocumentComposer({ onNavigate, editDocId, preselectedCar
       } catch (e) {
         console.error('Error loading image', e);
       } finally {
-        URL.revokeObjectURL(url);
+        if (url) URL.revokeObjectURL(url);
       }
     }
 

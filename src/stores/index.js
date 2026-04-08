@@ -1,7 +1,5 @@
 import { create } from 'zustand';
-import { db, seedTemplates } from '../db';
-import bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
+import { apiFetch } from '../api/client';
 
 // ==============================
 // Auth Store
@@ -11,14 +9,13 @@ export const useAuthStore = create((set, get) => ({
   loading: true,
   error: null,
 
-  initialize: async () => {
+  initialize: () => {
     const sessionStr = localStorage.getItem('cardcomposer_session');
     if (sessionStr) {
       try {
         const session = JSON.parse(sessionStr);
-        const user = await db.users.get(session.userId);
-        if (user) {
-          set({ currentUser: { id: user.id, username: user.username }, loading: false });
+        if (session.token && session.username && session.userId) {
+          set({ currentUser: { id: session.userId, username: session.username }, loading: false });
           return;
         }
       } catch (e) {
@@ -30,50 +27,59 @@ export const useAuthStore = create((set, get) => ({
 
   register: async (username, password) => {
     set({ error: null });
-    const trimmed = username.trim().toLowerCase();
-    if (!trimmed || !password) {
-      set({ error: 'Username and password are required' });
-      return false;
+    try {
+      const res = await apiFetch('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+      });
+      return { success: true, ...res };
+    } catch (err) {
+      set({ error: err.message });
+      return { success: false };
     }
-    if (password.length < 4) {
-      set({ error: 'Password must be at least 4 characters' });
-      return false;
-    }
-    const existing = await db.users.where('username').equals(trimmed).first();
-    if (existing) {
-      set({ error: 'Username already exists' });
-      return false;
-    }
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(password, salt);
-    const user = {
-      id: uuidv4(),
-      username: trimmed,
-      passwordHash: hash,
-      createdAt: Date.now(),
-    };
-    await db.users.add(user);
-    localStorage.setItem('cardcomposer_session', JSON.stringify({ userId: user.id }));
-    set({ currentUser: { id: user.id, username: user.username }, error: null });
-    return true;
+  },
+
+  completeLogin: (token, user) => {
+    localStorage.setItem('cardcomposer_session', JSON.stringify({ 
+      token, 
+      userId: user.id, 
+      username: user.username 
+    }));
+    set({ currentUser: user, error: null });
   },
 
   login: async (username, password) => {
     set({ error: null });
-    const trimmed = username.trim().toLowerCase();
-    const user = await db.users.where('username').equals(trimmed).first();
-    if (!user) {
-      set({ error: 'Invalid username or password' });
+    try {
+      const res = await apiFetch('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+      });
+      localStorage.setItem('cardcomposer_session', JSON.stringify({ 
+        token: res.token, 
+        userId: res.user.id, 
+        username: res.user.username 
+      }));
+      set({ currentUser: res.user, error: null });
+      return true;
+    } catch (err) {
+      set({ error: err.message });
       return false;
     }
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) {
-      set({ error: 'Invalid username or password' });
+  },
+  
+  recoverPassword: async (username, recoveryCode, newPassword) => {
+    set({ error: null });
+    try {
+      await apiFetch('/auth/recover', {
+        method: 'POST',
+        body: JSON.stringify({ username, recoveryCode, newPassword })
+      });
+      return true;
+    } catch (err) {
+      set({ error: err.message });
       return false;
     }
-    localStorage.setItem('cardcomposer_session', JSON.stringify({ userId: user.id }));
-    set({ currentUser: { id: user.id, username: user.username }, error: null });
-    return true;
   },
 
   logout: () => {
@@ -89,45 +95,82 @@ export const useCardsStore = create((set, get) => ({
   cards: [],
   loading: false,
 
-  loadCards: async (userId) => {
+  loadCards: async () => {
     set({ loading: true });
-    const cards = await db.cards.where('userId').equals(userId).reverse().sortBy('createdAt');
-    set({ cards, loading: false });
+    try {
+      const cards = await apiFetch('/cards');
+      
+      // We don't fetch full Blobs anymore. The images will just use the API streams.
+      // But we map them so the frontend interface remains mostly similar.
+      const mappedCards = cards.map(c => ({
+        ...c,
+        frontThumbUrl: `/api/cards/${c.id}/front/thumb`,
+        backThumbUrl: `/api/cards/${c.id}/back/thumb`,
+        frontImageUrl: `/api/cards/${c.id}/front`,
+        backImageUrl: `/api/cards/${c.id}/back`,
+        // We shim frontThumb to avoid breaking existing React code expecting a Blob URL,
+        // though Ideally React components should just render <img src={card.frontThumbUrl} />
+        // Wait, the client code expects frontThumb to be a property, let's just keep the API URL
+      }));
+      set({ cards: mappedCards, loading: false });
+    } catch (err) {
+      console.error(err);
+      set({ loading: false });
+    }
   },
 
-  addCard: async ({ userId, type, customType, label, frontImage, backImage }) => {
-    const frontThumb = await createThumbnail(frontImage, 200);
-    const backThumb = await createThumbnail(backImage, 200);
-    const aspectRatio = await getImageAspectRatio(frontImage);
+  addCard: async ({ type, customType, label, frontImage, backImage }) => {
+    try {
+      const formData = new FormData();
+      formData.append('type', type);
+      if (customType) formData.append('customType', customType);
+      formData.append('label', label);
+      formData.append('front', frontImage);
+      formData.append('back', backImage);
 
-    const card = {
-      id: uuidv4(),
-      userId,
-      type,
-      customType: customType || null,
-      label,
-      frontImage,
-      backImage,
-      frontThumb,
-      backThumb,
-      aspectRatio,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await db.cards.add(card);
-    set((state) => ({ cards: [card, ...state.cards] }));
-    return card;
+      const session = JSON.parse(localStorage.getItem('cardcomposer_session'));
+
+      const res = await fetch('/api/cards', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.token}` // let fetch generate multipart boundaries
+        },
+        body: formData
+      });
+      
+      if (!res.ok) throw new Error(await res.text());
+      const card = await res.json();
+      
+      const mappedCard = {
+        ...card,
+        frontThumbUrl: `/api/cards/${card.id}/front/thumb`,
+        backThumbUrl: `/api/cards/${card.id}/back/thumb`,
+        frontImageUrl: `/api/cards/${card.id}/front`,
+        backImageUrl: `/api/cards/${card.id}/back`,
+      };
+
+      set((state) => ({ cards: [mappedCard, ...state.cards] }));
+      return mappedCard;
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
   },
 
   deleteCard: async (cardId) => {
-    await db.cards.delete(cardId);
-    // Also delete documents referencing this card
-    await db.documents.where('cardId').equals(cardId).delete();
+    await apiFetch(`/cards/${cardId}`, { method: 'DELETE' });
     set((state) => ({ cards: state.cards.filter((c) => c.id !== cardId) }));
   },
 
   getCard: async (cardId) => {
-    return await db.cards.get(cardId);
+    const card = await apiFetch(`/cards/${cardId}`);
+    return {
+      ...card,
+      frontThumbUrl: `/api/cards/${card.id}/front/thumb`,
+      backThumbUrl: `/api/cards/${card.id}/back/thumb`,
+      frontImageUrl: `/api/cards/${card.id}/front`,
+      backImageUrl: `/api/cards/${card.id}/back`,
+    };
   },
 }));
 
@@ -140,9 +183,13 @@ export const useTemplatesStore = create((set, get) => ({
 
   loadTemplates: async () => {
     set({ loading: true });
-    await seedTemplates();
-    const templates = await db.templates.toArray();
-    set({ templates, loading: false });
+    try {
+      const templates = await apiFetch('/templates');
+      set({ templates, loading: false });
+    } catch (err) {
+      console.error(err);
+      set({ loading: false });
+    }
   },
 }));
 
@@ -153,51 +200,56 @@ export const useDocumentsStore = create((set, get) => ({
   documents: [],
   loading: false,
 
-  loadDocuments: async (userId) => {
+  loadDocuments: async () => {
     set({ loading: true });
-    const documents = await db.documents.where('userId').equals(userId).reverse().sortBy('createdAt');
-    set({ documents, loading: false });
+    try {
+      const documents = await apiFetch('/documents');
+      set({ documents, loading: false });
+    } catch(err) {
+      console.error(err);
+      set({ loading: false });
+    }
   },
 
   addDocument: async (doc) => {
-    const document = {
-      id: uuidv4(),
-      ...doc,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await db.documents.add(document);
+    const document = await apiFetch('/documents', {
+      method: 'POST',
+      body: JSON.stringify(doc)
+    });
     set((state) => ({ documents: [document, ...state.documents] }));
     return document;
   },
 
   updateDocument: async (docId, updates) => {
-    await db.documents.update(docId, { ...updates, updatedAt: Date.now() });
+    const document = await apiFetch(`/documents/${docId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates)
+    });
     set((state) => ({
-      documents: state.documents.map((d) =>
-        d.id === docId ? { ...d, ...updates, updatedAt: Date.now() } : d
-      ),
+      documents: state.documents.map((d) => (d.id === docId ? document : d)),
     }));
   },
 
   deleteDocument: async (docId) => {
-    await db.documents.delete(docId);
+    await apiFetch(`/documents/${docId}`, { method: 'DELETE' });
     set((state) => ({ documents: state.documents.filter((d) => d.id !== docId) }));
   },
 
   getDocument: async (docId) => {
-    return await db.documents.get(docId);
+    // We can just find it in the state instead of network call for now
+    const state = get();
+    return state.documents.find(d => d.id === docId) || null;
   },
 }));
 
 // ==============================
-// Toast Store
+// Toast Store (Unchanged)
 // ==============================
 export const useToastStore = create((set) => ({
   toasts: [],
 
   addToast: (message, type = 'info') => {
-    const id = uuidv4();
+    const id = Date.now().toString() + Math.random().toString();
     set((state) => ({
       toasts: [...state.toasts, { id, message, type }],
     }));
@@ -214,38 +266,3 @@ export const useToastStore = create((set) => ({
     }));
   },
 }));
-
-// ==============================
-// Utility Functions
-// ==============================
-function createThumbnail(blob, maxWidth) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      const scale = maxWidth / img.width;
-      const canvas = document.createElement('canvas');
-      canvas.width = maxWidth;
-      canvas.height = img.height * scale;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((thumbBlob) => {
-        URL.revokeObjectURL(url);
-        resolve(thumbBlob);
-      }, 'image/jpeg', 0.7);
-    };
-    img.src = url;
-  });
-}
-
-function getImageAspectRatio(blob) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img.width / img.height);
-    };
-    img.src = url;
-  });
-}

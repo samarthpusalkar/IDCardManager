@@ -72,17 +72,12 @@ export default function CardUpload({ onNavigate }) {
 
     setSubmitting(true);
     try {
-      // Convert File to Blob
-      const frontBlob = new Blob([await frontImage.arrayBuffer()], { type: frontImage.type });
-      const backBlob = new Blob([await backImage.arrayBuffer()], { type: backImage.type });
-
       await addCard({
-        userId: currentUser.id,
         type: cardType,
         customType: cardType === 'OTHER' ? customType : null,
         label: label.trim(),
-        frontImage: frontBlob,
-        backImage: backBlob,
+        frontImage,
+        backImage,
       });
 
       addToast('Card saved successfully!', 'success');

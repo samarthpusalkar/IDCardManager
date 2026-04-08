@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Database and uploaded ID cards
+server/data/
+server/data/*

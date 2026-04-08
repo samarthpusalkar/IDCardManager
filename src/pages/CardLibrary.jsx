@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useCardsStore, useToastStore } from '../stores';
+import { apiFetch } from '../api/client';
 
 export default function CardLibrary({ onNavigate }) {
   const { cards, deleteCard } = useCardsStore();
@@ -10,16 +11,31 @@ export default function CardLibrary({ onNavigate }) {
 
   useEffect(() => {
     const urls = {};
+    const abortController = new AbortController();
+    
+    const loadSecureImage = async (url, key) => {
+      try {
+        // Strip /api prefix if present because apiFetch adds it automatically
+        const endpoint = url.startsWith('/api') ? url.slice(4) : url;
+        const res = await apiFetch(endpoint, { signal: abortController.signal });
+        const blob = await res.blob();
+        urls[key] = URL.createObjectURL(blob);
+        setThumbUrls({ ...urls });
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('Error loading thumbnail', e);
+      }
+    };
+
     cards.forEach((card) => {
-      if (card.frontThumb) {
-        urls[card.id + '-front'] = URL.createObjectURL(card.frontThumb);
-      }
-      if (card.backThumb) {
-        urls[card.id + '-back'] = URL.createObjectURL(card.backThumb);
-      }
+      // Use the injected URLs from our api store wrapper
+      if (card.frontThumbUrl) loadSecureImage(card.frontThumbUrl, card.id + '-front');
+      if (card.backThumbUrl)  loadSecureImage(card.backThumbUrl, card.id + '-back');
     });
-    setThumbUrls(urls);
-    return () => Object.values(urls).forEach(URL.revokeObjectURL);
+
+    return () => {
+      abortController.abort();
+      Object.values(urls).forEach(URL.revokeObjectURL);
+    };
   }, [cards]);
 
   const filteredCards = filter === 'ALL' ? cards : cards.filter((c) => c.type === filter);
