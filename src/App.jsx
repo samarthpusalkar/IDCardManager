@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   useAuthStore,
   useCardsStore,
@@ -15,7 +15,7 @@ import DocumentComposer from './pages/DocumentComposer';
 import DocumentHistory from './pages/DocumentHistory';
 
 export default function App() {
-  const { currentUser, loading, initialize } = useAuthStore();
+  const { currentUser, loading, initialize, validateSession } = useAuthStore();
   const { loadCards } = useCardsStore();
   const { loadTemplates } = useTemplatesStore();
   const { loadDocuments } = useDocumentsStore();
@@ -32,11 +32,46 @@ export default function App() {
   // Load data when user logged in
   useEffect(() => {
     if (currentUser) {
-      loadCards(currentUser.id);
+      loadCards();
       loadTemplates();
-      loadDocuments(currentUser.id);
+      loadDocuments();
     }
   }, [currentUser]);
+
+  const syncFromServer = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const valid = await validateSession();
+      if (!valid) return;
+      await Promise.all([
+        loadCards(),
+        loadDocuments(),
+      ]);
+    } catch (err) {
+      console.error('Background sync failed', err);
+    }
+  }, [currentUser, validateSession, loadCards, loadDocuments]);
+
+  // Keep browser tabs/devices eventually in sync.
+  useEffect(() => {
+    if (!currentUser) return undefined;
+    const intervalId = setInterval(syncFromServer, 30000);
+    const onFocus = () => {
+      syncFromServer();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncFromServer();
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [currentUser, syncFromServer]);
 
   const handleNavigate = (page, docId = null, cardId = null) => {
     setActivePage(page);

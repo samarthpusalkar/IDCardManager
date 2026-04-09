@@ -211,7 +211,7 @@ export default function AuthScreen() {
 
         <div style={{ marginTop: 'var(--space-6)', textAlign: 'center' }}>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-            🔒 All data is stored locally on your device. Nothing leaves your browser.
+            🔒 Images are encrypted in your browser, then stored as unreadable data in your cloud account.
           </p>
         </div>
       </div>

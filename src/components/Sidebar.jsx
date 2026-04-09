@@ -48,7 +48,7 @@ export default function Sidebar({ activePage, onNavigate }) {
           </div>
           <div>
             <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{currentUser?.username}</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Local Profile</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Cloud Account (Encrypted)</div>
           </div>
         </div>
         <button className="btn btn-ghost w-full btn-sm" onClick={logout}>

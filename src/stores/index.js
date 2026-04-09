@@ -5,6 +5,15 @@ import * as crypto from '../api/crypto';
 // Cache for decrypted images to avoid re-decrypting
 const imageCache = new Map();
 const SESSION_VAULT_KEY = 'cardcomposer_session_vault_key';
+const PERSISTENT_VAULT_KEY = 'cardcomposer_persistent_vault_key';
+
+function clearPersistedSession() {
+  localStorage.removeItem('cardcomposer_session');
+  localStorage.removeItem('cardcomposer_vault_envelope');
+  localStorage.removeItem('cardcomposer_recovery_code');
+  localStorage.removeItem(PERSISTENT_VAULT_KEY);
+  sessionStorage.removeItem(SESSION_VAULT_KEY);
+}
 
 function normalizeCard(card) {
   return {
@@ -37,13 +46,27 @@ export const useAuthStore = create((set, get) => ({
   initialize: async () => {
     const sessionStr = localStorage.getItem('cardcomposer_session');
     const vaultEnvelopeStr = localStorage.getItem('cardcomposer_vault_envelope');
-    const sessionVaultKeyRaw = sessionStorage.getItem(SESSION_VAULT_KEY);
+    const sessionVaultKeyRaw =
+      sessionStorage.getItem(SESSION_VAULT_KEY) || localStorage.getItem(PERSISTENT_VAULT_KEY);
 
     if (sessionStr) {
       try {
         const session = JSON.parse(sessionStr);
         const envelope = vaultEnvelopeStr ? JSON.parse(vaultEnvelopeStr) : null;
         if (session.token && session.username && session.userId) {
+          const me = await apiFetch('/auth/me');
+          if (!me?.user?.id) {
+            throw new Error('Session validation failed');
+          }
+
+          const serverEnvelope = me.encryptedVaultKey && me.encryptedVaultKeyIv && me.encryptedVaultKeySalt
+            ? {
+                encryptedVaultKey: me.encryptedVaultKey,
+                encryptedVaultKeyIv: me.encryptedVaultKeyIv,
+                encryptedVaultKeySalt: me.encryptedVaultKeySalt,
+              }
+            : envelope;
+
           let vaultKey = null;
           if (sessionVaultKeyRaw) {
             try {
@@ -51,21 +74,31 @@ export const useAuthStore = create((set, get) => ({
             } catch (err) {
               console.error('Failed to import session vault key:', err);
               sessionStorage.removeItem(SESSION_VAULT_KEY);
+              localStorage.removeItem(PERSISTENT_VAULT_KEY);
             }
           }
+
+          if (serverEnvelope) {
+            localStorage.setItem('cardcomposer_vault_envelope', JSON.stringify(serverEnvelope));
+          }
+
+          localStorage.setItem('cardcomposer_session', JSON.stringify({
+            token: session.token,
+            userId: me.user.id,
+            username: me.user.username,
+          }));
+
           set({
-            currentUser: { id: session.userId, username: session.username },
+            currentUser: { id: me.user.id, username: me.user.username },
             vaultKey,
-            encryptedVaultKey: envelope,
+            encryptedVaultKey: serverEnvelope,
             loading: false,
           });
           return;
         }
       } catch (e) {
         console.error('Failed to initialize vault:', e);
-        localStorage.removeItem('cardcomposer_session');
-        localStorage.removeItem('cardcomposer_vault_envelope');
-        localStorage.removeItem('cardcomposer_recovery_code');
+        clearPersistedSession();
       }
     }
     set({ loading: false });
@@ -93,7 +126,9 @@ export const useAuthStore = create((set, get) => ({
       });
 
       localStorage.setItem('cardcomposer_vault_envelope', JSON.stringify(envelope));
-      sessionStorage.setItem(SESSION_VAULT_KEY, await crypto.exportVaultKey(vaultKey));
+      const exportedKey = await crypto.exportVaultKey(vaultKey);
+      sessionStorage.setItem(SESSION_VAULT_KEY, exportedKey);
+      localStorage.setItem(PERSISTENT_VAULT_KEY, exportedKey);
       set({ vaultKey, encryptedVaultKey: envelope, error: null });
 
       return { success: true, ...res };
@@ -134,7 +169,9 @@ export const useAuthStore = create((set, get) => ({
       const vaultKey = await crypto.decryptVaultKeyEnvelope(envelope, password);
 
       localStorage.setItem('cardcomposer_vault_envelope', JSON.stringify(envelope));
-      sessionStorage.setItem(SESSION_VAULT_KEY, await crypto.exportVaultKey(vaultKey));
+      const exportedKey = await crypto.exportVaultKey(vaultKey);
+      sessionStorage.setItem(SESSION_VAULT_KEY, exportedKey);
+      localStorage.setItem(PERSISTENT_VAULT_KEY, exportedKey);
       set({ currentUser: res.user, vaultKey, encryptedVaultKey: envelope, error: null });
 
       return true;
@@ -175,7 +212,9 @@ export const useAuthStore = create((set, get) => ({
         userId: res.user.id,
         username: res.user.username,
       }));
-      sessionStorage.setItem(SESSION_VAULT_KEY, await crypto.exportVaultKey(vaultKey));
+      const exportedKey = await crypto.exportVaultKey(vaultKey);
+      sessionStorage.setItem(SESSION_VAULT_KEY, exportedKey);
+      localStorage.setItem(PERSISTENT_VAULT_KEY, exportedKey);
       set({ currentUser: res.user, vaultKey, encryptedVaultKey: passwordEnvelope, error: null });
       return { success: true, vaultKey };
     } catch (err) {
@@ -187,10 +226,23 @@ export const useAuthStore = create((set, get) => ({
   // Getter to retrieve the current vault key
   getVaultKey: () => get().vaultKey,
 
+  validateSession: async () => {
+    try {
+      const me = await apiFetch('/auth/me');
+      if (!me?.user?.id) return false;
+      const current = get().currentUser;
+      if (!current || current.id !== me.user.id || current.username !== me.user.username) {
+        set({ currentUser: me.user });
+      }
+      return true;
+    } catch (err) {
+      get().logout();
+      return false;
+    }
+  },
+
   logout: () => {
-    localStorage.removeItem('cardcomposer_session');
-    localStorage.removeItem('cardcomposer_vault_envelope');
-    sessionStorage.removeItem(SESSION_VAULT_KEY);
+    clearPersistedSession();
     // Revoke all cached blob URLs
     imageCache.forEach((url) => URL.revokeObjectURL(url));
     imageCache.clear();

@@ -6,6 +6,20 @@ import { requireAuth, signToken } from '../middleware/auth.js';
 
 const router = Router();
 
+// ── GET /api/auth/me ──────────────────────────────────────────────────────
+router.get('/me', requireAuth, (req, res) => {
+  const user = stmts.getUserById.get(req.user.userId);
+  if (!user) {
+    return res.status(401).json({ error: 'Account no longer exists' });
+  }
+  res.json({
+    user: { id: user.id, username: user.username },
+    encryptedVaultKey: user.encrypted_vault_key,
+    encryptedVaultKeyIv: user.encrypted_vault_key_iv,
+    encryptedVaultKeySalt: user.encrypted_vault_key_salt,
+  });
+});
+
 // ── POST /api/auth/register ──────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   const { username, password } = req.body;

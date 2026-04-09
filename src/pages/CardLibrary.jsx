@@ -79,7 +79,7 @@ export default function CardLibrary({ onNavigate }) {
         <div className="empty-state">
           <div className="empty-state-icon">🪪</div>
           <h3>No cards yet</h3>
-          <p>Upload your first identity card to get started. Your cards are stored locally and reusable for all future documents.</p>
+          <p>Upload your first identity card to get started. Your cards are encrypted in-browser and stored in your account for reuse across sessions.</p>
           <button className="btn btn-primary" onClick={() => onNavigate('upload')}>
             📤 Upload Your First Card
           </button>
