@@ -26,6 +26,10 @@ dist-ssr
 # Database and uploaded ID cards
 server/data/
 server/data/*
+./data/
+./data/*
+data/
+data/*
 
 # Environment and secrets
 .env

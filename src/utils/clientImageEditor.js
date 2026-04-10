@@ -66,6 +66,8 @@ export async function processImageOnClient(file, editorState) {
 
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = 'high';
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, outputWidth, outputHeight);
 
     const baseScale = Math.min(outputWidth / image.width, outputHeight / image.height);
     const zoom = clamp(Number(editorState.zoom) || 1, 1, 4);
