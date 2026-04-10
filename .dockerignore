@@ -1,0 +1,17 @@
+# Docker ignores
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+!.env.template
+.DS_Store
+Thumbs.db
+dist
+./data
+./data/*
+# Keep the Dockerfile and docker-compose
+!Dockerfile
+!docker-compose.yml

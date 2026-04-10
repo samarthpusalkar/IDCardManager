@@ -5,7 +5,7 @@ import fs from 'fs';
 import process from 'node:process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const DATA_DIR = process.env.DATA_ROOT ? path.join(process.env.DATA_ROOT, 'CardManager/data') : path.join(__dirname, 'data');
 const DB_PATH = path.join(DATA_DIR, 'db.sqlite');
 
 // Ensure data directory exists
