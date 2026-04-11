@@ -50,14 +50,16 @@ export default function CardLibrary({ onNavigate }) {
 
   return (
     <div className="page animate-in">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
+      <div className="page-header page-header-bar">
+        <div className="page-header-copy">
           <h1>Card Library</h1>
           <p>All your stored identity cards — upload once, use everywhere.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => onNavigate('upload')}>
-          📤 Upload Card
-        </button>
+        <div className="page-header-actions">
+          <button className="btn btn-primary" onClick={() => onNavigate('upload')}>
+            📤 Upload Card
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

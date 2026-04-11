@@ -27,7 +27,7 @@ export default function App() {
   // Initialize auth on mount
   useEffect(() => {
     initialize();
-  }, []);
+  }, [initialize]);
 
   // Load data when user logged in
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function App() {
       loadTemplates();
       loadDocuments();
     }
-  }, [currentUser]);
+  }, [currentUser, loadCards, loadDocuments, loadTemplates]);
 
   const syncFromServer = useCallback(async () => {
     if (!currentUser) return;

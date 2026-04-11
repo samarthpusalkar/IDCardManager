@@ -235,7 +235,7 @@ export const useAuthStore = create((set, get) => ({
         set({ currentUser: me.user });
       }
       return true;
-    } catch (err) {
+    } catch {
       get().logout();
       return false;
     }
@@ -253,7 +253,7 @@ export const useAuthStore = create((set, get) => ({
 // ==============================
 // Cards Store
 // ==============================
-export const useCardsStore = create((set, get) => ({
+export const useCardsStore = create((set) => ({
   cards: [],
   loading: false,
 

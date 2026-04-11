@@ -146,7 +146,7 @@ export default function CardUpload({ onNavigate }) {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-6)', marginBottom: 'var(--space-6)' }}>
+        <div className="two-column-grid mb-6">
           {/* Front Image */}
           <div className="glass-card-static" style={{ padding: 'var(--space-5)' }}>
             <h4 style={{ marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -241,7 +241,7 @@ export default function CardUpload({ onNavigate }) {
         {/* Card Details */}
         <div className="glass-card-static" style={{ padding: 'var(--space-6)' }}>
           <h4 style={{ marginBottom: 'var(--space-5)' }}>Card Details</h4>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-5)' }}>
+          <div className="two-column-grid-tight">
             <div className="input-group">
               <label htmlFor="card-type">Card Type</label>
               <select
@@ -284,7 +284,7 @@ export default function CardUpload({ onNavigate }) {
             </div>
           </div>
 
-          <div style={{ marginTop: 'var(--space-6)', display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+          <div className="action-row mt-6">
             <button
               type="button"
               className="btn btn-secondary"
@@ -323,7 +323,7 @@ export default function CardUpload({ onNavigate }) {
                 Before saving, please verify your information. Once saved, your cards will be
                 <strong> encrypted on your device</strong> and cannot be read by the server.
               </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+              <div className="two-column-grid-tight">
                 <div>
                   <h5 style={{ marginBottom: 'var(--space-2)' }}>Front Side</h5>
                   <div style={{ background: 'var(--bg-tertiary)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>

@@ -139,7 +139,7 @@ export default function DocumentComposer({ onNavigate, preselectedCardId }) {
       fabricRef.current = null;
       setCanvasReady(false);
     };
-  }, []);
+  }, [previewHeight, previewWidth]);
 
   const renderCardOnCanvas = useCallback(async () => {
     const canvas = fabricRef.current;
@@ -503,8 +503,10 @@ export default function DocumentComposer({ onNavigate, preselectedCardId }) {
   useEffect(() => {
     const updateScale = () => {
       if (canvasContainerRef.current) {
-        const containerWidth = canvasContainerRef.current.clientWidth - 48;
-        const scale = Math.min(1, containerWidth / previewWidth);
+        const styles = window.getComputedStyle(canvasContainerRef.current);
+        const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+        const availableWidth = Math.max(canvasContainerRef.current.clientWidth - horizontalPadding, 280);
+        const scale = Math.min(1, availableWidth / previewWidth);
         setDisplayScale(scale);
       }
     };
@@ -513,14 +515,28 @@ export default function DocumentComposer({ onNavigate, preselectedCardId }) {
     return () => window.removeEventListener('resize', updateScale);
   }, [previewWidth]);
 
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.setDimensions(
+      {
+        width: previewWidth * displayScale,
+        height: previewHeight * displayScale,
+      },
+      { cssOnly: true }
+    );
+    canvas.calcOffset();
+    canvas.requestRenderAll();
+  }, [displayScale, previewHeight, previewWidth]);
+
   return (
     <div className="page animate-in">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
+      <div className="page-header page-header-bar">
+        <div className="page-header-copy">
           <h1>Document Composer</h1>
           <p>Build your print-ready A4 document with overlays and export options.</p>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+        <div className="page-header-actions">
           <button className="btn btn-secondary" onClick={exportPNG} disabled={exporting || !selectedCardId}>
             🖼️ Export PNG
           </button>
@@ -821,9 +837,9 @@ export default function DocumentComposer({ onNavigate, preselectedCardId }) {
           <div
             className="composer-canvas-wrapper"
             style={{
-              transform: `scale(${displayScale})`,
-              transformOrigin: 'top center',
-              display: selectedCardId ? 'block' : 'none'
+              display: selectedCardId ? 'block' : 'none',
+              width: `${previewWidth * displayScale}px`,
+              height: `${previewHeight * displayScale}px`,
             }}
           >
             <canvas ref={canvasRef} />

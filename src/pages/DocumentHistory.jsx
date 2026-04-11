@@ -20,14 +20,16 @@ export default function DocumentHistory({ onNavigate }) {
 
   return (
     <div className="page animate-in">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
+      <div className="page-header page-header-bar">
+        <div className="page-header-copy">
           <h1>Document History</h1>
           <p>All your exported documents — reuse cards for different purposes without re-uploading.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => onNavigate('composer')}>
-          🖨️ New Document
-        </button>
+        <div className="page-header-actions">
+          <button className="btn btn-primary" onClick={() => onNavigate('composer')}>
+            🖨️ New Document
+          </button>
+        </div>
       </div>
 
       {documents.length === 0 ? (

@@ -31,7 +31,7 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-6)' }}>
+      <div className="two-column-grid">
         {/* Quick Actions */}
         <div className="glass-card-static" style={{ padding: 'var(--space-6)' }}>
           <h4 style={{ marginBottom: 'var(--space-5)' }}>Quick Actions</h4>
@@ -77,7 +77,7 @@ export default function Dashboard({ onNavigate }) {
       {/* How It Works */}
       <div className="glass-card-static" style={{ padding: 'var(--space-6)', marginTop: 'var(--space-6)' }}>
         <h4 style={{ marginBottom: 'var(--space-5)' }}>How It Works</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-5)' }}>
+        <div className="four-column-grid">
           {[
             { icon: '📤', title: 'Upload', desc: 'Upload front & back of your ID card' },
             { icon: '📐', title: 'Choose Template', desc: 'Select an A4 layout template' },

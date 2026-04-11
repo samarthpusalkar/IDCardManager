@@ -18,7 +18,7 @@ export default function AuthScreen() {
       await navigator.clipboard.writeText(recoveryCodeData.code);
       setCopiedRecoveryCode(true);
       setTimeout(() => setCopiedRecoveryCode(false), 1500);
-    } catch (err) {
+    } catch {
       setCopiedRecoveryCode(false);
     }
   };

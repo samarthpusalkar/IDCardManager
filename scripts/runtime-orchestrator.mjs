@@ -11,7 +11,16 @@ const isDockerMode = mode === 'docker';
 
 const PORT_API = process.env.PORT_API || process.env.PORT || '9902';
 const PORT_APP = process.env.PORT_APP || '9901';
-const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const inheritedNpmExecPath = process.env.npm_execpath;
+const npmRunner = inheritedNpmExecPath
+  ? {
+      command: process.execPath,
+      argsPrefix: [inheritedNpmExecPath],
+    }
+  : {
+      command: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+      argsPrefix: [],
+    };
 
 const managed = [];
 let shuttingDown = false;
@@ -19,6 +28,15 @@ let shuttingDown = false;
 const prefixed = (prefix) => (chunk) => {
   process.stdout.write(`[${prefix}] ${chunk.toString()}`);
 };
+
+function spawnNpmScript(name, script, extraArgs, env) {
+  return spawnManaged(
+    name,
+    npmRunner.command,
+    [...npmRunner.argsPrefix, 'run', script, ...extraArgs],
+    env
+  );
+}
 
 function spawnManaged(name, command, args, env) {
   const child = spawn(command, args, {
@@ -70,14 +88,14 @@ const backendEnv = {
   ...process.env,
   PORT: PORT_API,
 };
-spawnManaged('backend', npmCmd, ['run', 'server'], backendEnv);
+spawnNpmScript('backend', 'server', [], backendEnv);
 
 if (!isDockerMode) {
   const websiteEnv = {
     ...process.env,
     PORT: PORT_APP,
   };
-  spawnManaged('website', npmCmd, ['run', 'dev', '--', '--clearScreen', 'false'], websiteEnv);
+  spawnNpmScript('website', 'dev', ['--', '--clearScreen', 'false'], websiteEnv);
   console.log(`[runtime] website server on port ${PORT_APP}; backend on port ${PORT_API}`);
 } else {
   console.log(`[runtime] docker mode: backend serves built website on port ${PORT_API}`);
